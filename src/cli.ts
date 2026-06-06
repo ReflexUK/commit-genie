@@ -4,6 +4,7 @@
  *
  *   commit-genie            # print a suggested message
  *   commit-genie --commit   # generate and run `git commit` with it
+ *   commit-genie --dry-run  # show the message without committing (alias for default)
  *   commit-genie --install-hook
  */
 import { execFileSync } from "node:child_process";
@@ -18,13 +19,20 @@ import { hookScript } from "./hook.js";
 interface Args {
   commit: boolean;
   print: boolean;
+  dryRun: boolean;
   installHook: boolean;
   help: boolean;
   hint?: string;
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { commit: false, print: false, installHook: false, help: false };
+  const args: Args = {
+    commit: false,
+    print: false,
+    dryRun: false,
+    installHook: false,
+    help: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     switch (argv[i]) {
       case "-c":
@@ -33,6 +41,9 @@ function parseArgs(argv: string[]): Args {
         break;
       case "--print":
         args.print = true;
+        break;
+      case "--dry-run":
+        args.dryRun = true;
         break;
       case "--install-hook":
         args.installHook = true;
@@ -50,12 +61,13 @@ function parseArgs(argv: string[]): Args {
   return args;
 }
 
-const HELP = `commit-genie — Conventional Commit messages from your staged diff, via any LLM
+const HELP = `commit-genie -- Conventional Commit messages from your staged diff, via any LLM
 
 Usage:
   git add -A
   commit-genie                 Print a suggested commit message
   commit-genie --commit        Generate the message and create the commit
+  commit-genie --dry-run       Show the suggested message without committing
   commit-genie --hint "..."    Give the model extra context (e.g. an issue #)
   commit-genie --install-hook  Install a prepare-commit-msg git hook
   commit-genie --print         Print only the message (used by the hook)
@@ -68,7 +80,9 @@ Configuration (env):
 `;
 
 function installHook(): string {
-  const gitDir = execFileSync("git", ["rev-parse", "--git-dir"], { encoding: "utf8" }).trim();
+  const gitDir = execFileSync("git", ["rev-parse", "--git-dir"], {
+    encoding: "utf8",
+  }).trim();
   const hooksDir = join(gitDir, "hooks");
   if (!existsSync(hooksDir)) mkdirSync(hooksDir, { recursive: true });
   const hookPath = join(hooksDir, "prepare-commit-msg");
@@ -107,6 +121,12 @@ async function main() {
     return;
   }
 
+  if (args.dryRun) {
+    process.stdout.write(`${message}\n`);
+    process.stderr.write(`\n(dry run -- no commit created)\n`);
+    return;
+  }
+
   if (args.commit) {
     execFileSync("git", ["commit", "-m", message], { stdio: "inherit" });
     return;
@@ -114,7 +134,9 @@ async function main() {
 
   // Default: show the suggestion and how to use it.
   process.stdout.write(`${message}\n`);
-  process.stderr.write(`\n(run with --commit to commit, or pipe: git commit -m "$(commit-genie --print)")\n`);
+  process.stderr.write(
+    `\n(run with --commit to commit, or --dry-run to suppress this hint)\n`,
+  );
 }
 
 main().catch((err) => {

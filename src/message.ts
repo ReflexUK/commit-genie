@@ -1,5 +1,7 @@
 /**
- * Clean and validate model output into a well-formed Conventional Commit.
+ * Clean and validate model output into a well-formed Conventional Commit
+ * message. This module is responsible only for post-processing raw LLM output;
+ * prompt construction lives in prompt.ts.
  */
 export const CONVENTIONAL_TYPES = [
   "feat",
@@ -15,9 +17,14 @@ export const CONVENTIONAL_TYPES = [
   "revert",
 ] as const;
 
+export type ConventionalType = (typeof CONVENTIONAL_TYPES)[number];
+
 const TYPE_RE = new RegExp(
   `^(${CONVENTIONAL_TYPES.join("|")})(\\([^)]+\\))?(!)?: .+`,
 );
+
+/** Maximum recommended subject line length per Conventional Commits. */
+const MAX_SUBJECT_LENGTH = 72;
 
 /**
  * Strip code fences, surrounding quotes, and stray preamble that models love
@@ -32,7 +39,11 @@ export function cleanMessage(raw: string): string {
 
   // Drop a chatty first line that isn't itself the commit subject.
   const lines = text.split("\n");
-  if (lines.length > 1 && /(here('?s| is)|commit message|sure[,!.]?)/i.test(lines[0]) && !isConventional(lines[0])) {
+  if (
+    lines.length > 1 &&
+    /(here('?s| is)|commit message|sure[,!.]?)/i.test(lines[0]) &&
+    !isConventional(lines[0])
+  ) {
     lines.shift();
     text = lines.join("\n").trim();
   }
@@ -50,8 +61,19 @@ export function isConventional(message: string): boolean {
 }
 
 /**
+ * Truncate a subject line to MAX_SUBJECT_LENGTH, cutting at the last word
+ * boundary to avoid splitting mid-word.
+ */
+export function truncateSubject(subject: string): string {
+  if (subject.length <= MAX_SUBJECT_LENGTH) return subject;
+  const cut = subject.slice(0, MAX_SUBJECT_LENGTH);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd();
+}
+
+/**
  * Best-effort coercion: if the message lacks a conventional prefix, prepend
- * `chore: `. Keeps the subject under a sane length.
+ * `chore: `. Enforces the 72-character subject line limit.
  */
 export function normalize(message: string): string {
   const cleaned = cleanMessage(message);
@@ -60,5 +82,6 @@ export function normalize(message: string): string {
   if (!isConventional(subject)) {
     subject = `chore: ${subject.charAt(0).toLowerCase()}${subject.slice(1)}`;
   }
+  subject = truncateSubject(subject);
   return [subject, ...rest].join("\n").trim();
 }
