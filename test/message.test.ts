@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cleanMessage, isConventional, normalize } from "../src/message.ts";
+import {
+  cleanMessage,
+  isConventional,
+  normalize,
+  truncateSubject,
+} from "../src/message.ts";
 
 test("isConventional accepts valid subjects", () => {
   assert.ok(isConventional("feat: add login"));
@@ -30,7 +35,6 @@ test("cleanMessage strips wrapping quotes", () => {
 });
 
 test("cleanMessage keeps a valid first line that looks chatty-ish", () => {
-  // A conventional subject is never dropped even if it matches keywords.
   const raw = "fix: ensure sure path is created";
   assert.equal(cleanMessage(raw), "fix: ensure sure path is created");
 });
@@ -42,4 +46,29 @@ test("normalize prefixes non-conventional messages with chore:", () => {
 test("normalize leaves valid messages untouched", () => {
   const msg = "feat(auth): add OAuth login\n\n- wire up provider";
   assert.equal(normalize(msg), msg);
+});
+
+test("truncateSubject leaves short subjects unchanged", () => {
+  const s = "feat: add login button";
+  assert.equal(truncateSubject(s), s);
+});
+
+test("truncateSubject cuts at word boundary within 72 chars", () => {
+  const long = "feat: " + "a".repeat(30) + " " + "b".repeat(30);
+  const result = truncateSubject(long);
+  assert.ok(result.length <= 72, `expected <= 72, got ${result.length}`);
+  assert.ok(!result.endsWith(" "), "should not end with a space");
+});
+
+test("truncateSubject cuts hard if no word boundary available", () => {
+  const noSpaces = "feat:" + "x".repeat(80);
+  const result = truncateSubject(noSpaces);
+  assert.ok(result.length <= 72);
+});
+
+test("normalize enforces 72-char limit on subject lines", () => {
+  const longSubject = "feat: " + "word ".repeat(20).trimEnd();
+  const result = normalize(longSubject);
+  const subject = result.split("\n")[0];
+  assert.ok(subject.length <= 72, `subject too long: ${subject.length}`);
 });
